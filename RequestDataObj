@@ -1,0 +1,615 @@
+package apiobjects;
+
+import com.jayway.jsonpath.JsonPath;
+import org.apache.http.HttpEntity;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.*;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.protocol.HTTP;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+import util.EnvironmentType;
+
+import java.io.*;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+by PSUSHKOV on Jan, 2018
+
+
+public class RequestDataObj extends util.Functions {
+    private HttpClient httpClient;
+    private JSONObject data, jsonObjParam;
+    private HttpPost httpPost;
+    private HttpPut httpPut;
+    private HttpDelete httpDelete;
+    private HttpGet httpGet;
+    private String token;
+    private String sEnv = activeEnvironment[0].getHost().split("\\.")[1];
+    private URL apiUrl;
+    private String apiHost, apiProtocol;
+
+    public RequestDataObj(JSONObject data, JSONObject jsonObjParam) {
+        this.httpClient = HttpClientBuilder.create().build();
+        this.data = data;
+        this.jsonObjParam = jsonObjParam;
+
+        switch (jsonObjParam.get("method").toString()) {
+            case "POST":
+                this.httpPost = setHttpPost();
+                break;
+
+            case "PD_POST":
+                this.httpPost = setHttpPaymentDriverPost();
+                break;
+
+            case "POST_URL_ENCODED":
+                this.httpPost = setHttpPostUrlEncoded();
+                break;
+
+            case "PUT":
+                this.httpPut = setHttpPut();
+                break;
+
+            case "DELETE":
+                this.httpDelete = setHttpDelete();
+                break;
+
+            case "GET":
+                this.httpGet = setHttpGet();
+                break;
+        }
+    }
+
+    public RequestDataObj(JSONObject data, JSONObject jsonObjParam, String token)  {
+        this.httpClient = HttpClientBuilder.create().build();
+        this.data = data;
+        this.token = token;
+        this.jsonObjParam = jsonObjParam;
+
+        switch (jsonObjParam.get("method").toString()) {
+            case "POST":
+                this.httpPost = setHttpPost(token);
+                break;
+
+            case "POST FormData":
+                this.httpPost = setHttpPostFormData();
+                break;
+
+            case "POST_URL_ENCODED":
+                this.httpPost = setHttpPostUrlEncoded();
+                break;
+
+            case "PUT":
+                this.httpPut = setHttpPut();
+                break;
+
+            case "DELETE":
+                this.httpDelete = setHttpDelete();
+                break;
+
+            case "GET":
+                this.httpGet = setHttpGet();
+                break;
+        }
+
+    }
+
+    public HttpPost setHttpPost() {
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        // System.out.println(sURL);
+        HttpPost httpPost = new HttpPost(sURL);
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpPost.setHeader("Host", apiHost);
+            } else {
+                httpPost.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpPost.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpPost.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+        // Authorization
+        httpPost.setHeader("authorization", "Basic " + GetAuth());
+
+        StringEntity entity = new StringEntity(data.get("body").toString(), ContentType.APPLICATION_JSON);
+        httpPost.setEntity(entity);
+
+        //System.out.println(data.get("body").toString());
+        return httpPost;
+    }
+
+    public HttpPost setHttpPaymentDriverPost() {
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        List<NameValuePair> queryParams = new ArrayList<NameValuePair>();
+        JSONArray queryArray = (JSONArray) jsonObjParam.get("query");
+        for (int q = 0; q < queryArray.size(); q++) {
+            try {
+                System.out.println(queryArray.get(q).toString().split(":")[0] + " " + queryArray.get(q).toString().split(":")[1]);
+                queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], queryArray.get(q).toString().split(":")[1]));
+            } catch (ArrayIndexOutOfBoundsException e) {
+                queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], ""));
+            }
+        }
+
+        try {
+            URI uri = new URIBuilder(sURL)
+                    .addParameters(queryParams)
+                    .build();
+            httpPost = new HttpPost(uri);
+            System.out.println(uri.toString());
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpPost.setHeader("Host", apiHost);
+            } else {
+                httpPost.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpPost.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpPost.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        StringEntity entity = new StringEntity(data.get("body").toString(), ContentType.APPLICATION_JSON);
+        httpPost.setEntity(entity);
+
+        return httpPost;
+    }
+
+    public HttpPost setHttpPost(String token) {
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        // System.out.println(sURL);
+        HttpPost httpPost = new HttpPost(sURL);
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpPost.setHeader("Host", apiHost);
+            } else {
+                httpPost.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpPost.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpPost.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        // Authorization
+        httpPost.setHeader("authorization", "Basic Auth" + GetAuth());
+
+        StringEntity entity = new StringEntity(data.get("body").toString(), ContentType.APPLICATION_JSON);
+        httpPost.setEntity(entity);
+
+        //System.out.println(data.get("body").toString());
+        return httpPost;
+    }
+
+
+    public HttpPost setHttpPostUrlEncoded() {
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        // System.out.println(sURL);
+        HttpPost httpPost = new HttpPost(sURL);
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpPost.setHeader("Host", apiHost);
+            } else {
+                httpPost.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpPost.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpPost.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        List<NameValuePair> params = new ArrayList<NameValuePair>();
+        JSONArray bodyParams = (JSONArray) data.get("body");
+        for (int j = 0; j < bodyParams.size(); j++) {
+            params.add(new BasicNameValuePair(bodyParams.get(j).toString().split(":")[0], bodyParams.get(j).toString().split(":")[1]));
+        }
+
+        try {
+            httpPost.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+
+        //System.out.println(data.get("body").toString());
+        return httpPost;
+    }
+
+    public HttpPost setHttpPostFormData() {
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        // System.out.println(sURL);
+        HttpPost httpPost = new HttpPost(sURL);
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpPost.setHeader("Host", apiHost);
+            } else {
+                httpPost.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpPost.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpPost.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        // Authorization
+        //httpPost.setHeader("authorization", "Bearer " + getAccessToken());
+
+        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+        builder.addTextBody("LenderCode", JsonPath.read(data, "$.body.LenderCode"));
+        builder.addTextBody("RefNo", JsonPath.read(data, "$.body.RefNo"));
+        builder.addBinaryBody("File", new File(jsonObjParam.get("filePath").toString() + JsonPath.read(data, "$.body.File")),
+                ContentType.APPLICATION_OCTET_STREAM, JsonPath.read(data, "$.body.File"));
+
+        HttpEntity multipart = builder.build();
+        httpPost.setEntity(multipart);
+
+        //System.out.println(data.get("body").toString());
+        return httpPost;
+    }
+
+
+    public HttpPut setHttpPut() {
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        // System.out.println(sURL);
+        HttpPut httpPut = new HttpPut(sURL);
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpPut.setHeader("Host", apiHost);
+            } else {
+                httpPut.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpPut.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpPut.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        // Authorization
+        //httpPut.setHeader("authorization", "Bearer " + getAccessToken());
+
+        StringEntity entity = new StringEntity(data.get("body").toString(), ContentType.APPLICATION_JSON);
+        httpPut.setEntity(entity);
+
+        return httpPut;
+    }
+
+
+    public HttpDelete setHttpDelete() {
+        HttpDelete httpDelete;
+        getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        List<NameValuePair> queryParams = new ArrayList<NameValuePair>();
+        JSONArray queryArray = (JSONArray) jsonObjParam.get("query");
+        for (int q = 0; q < queryArray.size(); q++) {
+            try {
+                queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], queryArray.get(q).toString().split(":")[1]));
+            } catch (ArrayIndexOutOfBoundsException e) {
+                queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], ""));
+            }
+        }
+
+        try {
+            URI uri = new URIBuilder(sURL)
+                    .addParameters(queryParams)
+                    .build();
+            httpDelete = new HttpDelete(uri);
+            //System.out.println(uri.toString());
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpDelete.setHeader("Host", apiHost);
+            } else {
+                httpDelete.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpDelete.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpDelete.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        // Authorization
+        //httpDelete.setHeader("authorization", "Bearer " + getAccessToken());
+
+        return httpDelete;
+    }
+
+    public HttpGet setHttpGet() {
+        HttpGet httpGet;
+        getActiveEnvironment(Integer.parseInt(jsonObjParam.get("ind").toString()));
+
+        /*
+        String sURL = apiUrl + jsonObjParam.get("path").toString();
+        HttpGet httpGet = new HttpGet(sURL);
+        httpGet.setHeader("Host", apiHost);
+        */
+
+        String sURL;
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                sURL = apiUrl + jsonObjParam.get("path").toString();
+            } else {
+                if (jsonObjParam.get("protocol").toString().equals("")) {
+                    sURL = apiProtocol + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                } else {
+                    sURL = jsonObjParam.get("protocol").toString() + jsonObjParam.get("host").toString() + jsonObjParam.get("path").toString();
+                }
+            }
+        } catch (NullPointerException e) {
+            sURL = apiUrl + jsonObjParam.get("path").toString();
+        }
+
+        List<NameValuePair> queryParams = new ArrayList<NameValuePair>();
+        JSONArray queryArray = (JSONArray) jsonObjParam.get("query");
+        for (int q = 0; q < queryArray.size(); q++) {
+            try {
+                queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], queryArray.get(q).toString().split(":")[1]));
+            } catch (ArrayIndexOutOfBoundsException e) {
+                queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], ""));
+            }
+            //System.out.println(queryArray.get(q).toString().split(":")[1]);
+            //queryParams.add(new BasicNameValuePair(queryArray.get(q).toString().split(":")[0], queryArray.get(q).toString().split(":")[1]));
+        }
+
+        try {
+            URI uri = new URIBuilder(sURL)
+                    .addParameters(queryParams)
+                    .build();
+            httpGet = new HttpGet(uri);
+            //System.out.println(uri.toString());
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        try {
+            if (jsonObjParam.get("host").toString().equals("")) {
+                httpGet.setHeader("Host", apiHost);
+            } else {
+                httpGet.setHeader("Host", jsonObjParam.get("host").toString());
+            }
+        } catch (NullPointerException e) {
+            httpGet.setHeader("Host", apiHost);
+        }
+
+        // Build the header parameters
+        JSONArray headerParam = (JSONArray) jsonObjParam.get("header");
+        for (int j = 0; j < headerParam.size(); j++) {
+            httpGet.setHeader(headerParam.get(j).toString().split(":")[0], headerParam.get(j).toString().split(":")[1]);
+        }
+
+        // Authorization
+        //httpGet.setHeader("authorization", "Bearer " + getAccessToken());
+
+        return httpGet;
+    }
+
+    public HttpClient getHttpClient() {
+        return httpClient;
+    }
+
+    public HttpGet getHttpGet() {
+        return httpGet;
+    }
+
+    public HttpPost getHttpPost() {
+        return httpPost;
+    }
+
+    public HttpPut getHttpPut() {
+        return httpPut;
+    }
+
+    public HttpDelete getHttpDelete() {
+        return httpDelete;
+    }
+
+    public String getRequestUrl() {
+        String sRequestUrl = null;
+
+        try {
+            if (httpGet != null) {
+                sRequestUrl = httpGet.getURI().toURL().toString();
+            }
+
+            if (httpPost != null) {
+                sRequestUrl = httpPost.getURI().toURL().toString();
+            }
+
+            if (httpPut != null) {
+                sRequestUrl = httpPut.getURI().toURL().toString();
+            }
+
+            if (httpDelete != null) {
+                sRequestUrl = httpDelete.getURI().toURL().toString();
+            }
+        } catch (MalformedURLException e) {
+            System.out.println(httpPost.getURI());
+            e.printStackTrace();
+        }
+
+        return sRequestUrl;
+    }
+
+    public String getRequestMethod() {
+        return jsonObjParam.get("method").toString();
+    }
+
+    public EnvironmentType[] getActiveEnvironment(int ind) {
+
+        try {
+            apiUrl = new URL(activeEnvironment[ind].getProtocol() + activeEnvironment[ind].getHost());
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+
+        apiHost = activeEnvironment[ind].getHost();
+        apiProtocol = activeEnvironment[ind].getProtocol();
+        return activeEnvironment;
+    }
+}
